@@ -1,6 +1,7 @@
 use std::fmt::{Display, Write};
 
 use anyhow::{anyhow, Result};
+use rand::{prelude::SliceRandom, seq::IteratorRandom, thread_rng};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum GameCell {
@@ -76,6 +77,11 @@ impl GameCell {
             }
             GameCell::Fixed(_) => None,
         }
+    }
+
+    pub fn random_potential(&mut self) -> Option<u16> {
+        self.potential_values()
+            .map(|v| *v.choose(&mut thread_rng()).unwrap())
     }
 
     pub fn constrain(&mut self, cell: &GameCell) {
@@ -187,6 +193,8 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     #[test]
@@ -365,5 +373,37 @@ mod tests {
             Some(vec![9])
         );
         assert_eq!(GameCell::Fixed(4).potential_values(), None);
+    }
+
+    #[test]
+    fn random_potential_values() {
+        let expected: HashSet<u16> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9].iter().copied().collect();
+        for _ in 0..100 {
+            assert!(expected.contains(
+                &GameCell::SuperState(ALL_CELL_POSSIBILITIES)
+                    .random_potential()
+                    .unwrap()
+            ));
+        }
+
+        let expected: HashSet<u16> = vec![8, 9].iter().copied().collect();
+        for _ in 0..100 {
+            assert!(expected.contains(
+                &GameCell::SuperState(0b00000001_10000000)
+                    .random_potential()
+                    .unwrap()
+            ));
+        }
+
+        let expected: HashSet<u16> = vec![9].iter().copied().collect();
+        for _ in 0..100 {
+            assert!(expected.contains(
+                &GameCell::SuperState(0b00000001_00000000)
+                    .random_potential()
+                    .unwrap()
+            ));
+        }
+
+        assert_eq!(None, GameCell::Fixed(2).random_potential());
     }
 }
