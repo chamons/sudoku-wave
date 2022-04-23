@@ -1,5 +1,4 @@
 State
-- Constrain a given cell (return if set and scream if no values left)
 - Chose value at random
 
 Solver

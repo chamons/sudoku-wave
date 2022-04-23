@@ -31,6 +31,61 @@ impl GameCell {
             GameCell::Fixed(_) => None,
         }
     }
+
+    fn value_to_bit(value: u16) -> u16 {
+        match value {
+            1 => 0b00000000_00000001,
+            2 => 0b00000000_00000010,
+            3 => 0b00000000_00000100,
+            4 => 0b00000000_00001000,
+            5 => 0b00000000_00010000,
+            6 => 0b00000000_00100000,
+            7 => 0b00000000_01000000,
+            8 => 0b00000000_10000000,
+            9 => 0b00000001_00000000,
+            _ => panic!("Invalid value in value_to_bit"),
+        }
+    }
+
+    fn unset_bit_pattern(value: u16) -> u16 {
+        match value {
+            1 => 0b00000001_11111110,
+            2 => 0b00000001_11111101,
+            3 => 0b00000001_11111011,
+            4 => 0b00000001_11110111,
+            5 => 0b00000001_11101111,
+            6 => 0b00000001_11011111,
+            7 => 0b00000001_10111111,
+            8 => 0b00000001_01111111,
+            9 => 0b00000000_11111111,
+            _ => panic!("Invalid value in value_to_bit"),
+        }
+    }
+
+    pub fn potential_values(&mut self) -> Option<Vec<u16>> {
+        match self {
+            GameCell::SuperState(v) => {
+                let mut values = vec![];
+                for i in 1..=9 {
+                    let mask = GameCell::value_to_bit(i);
+                    if mask & *v == mask {
+                        values.push(i);
+                    }
+                }
+                Some(values)
+            }
+            GameCell::Fixed(_) => None,
+        }
+    }
+
+    pub fn constrain(&mut self, cell: &GameCell) {
+        if let GameCell::Fixed(constraint) = cell {
+            match self {
+                GameCell::SuperState(v) => *v = *v & GameCell::unset_bit_pattern(*constraint),
+                GameCell::Fixed(_) => {}
+            }
+        }
+    }
 }
 
 pub const ALL_CELL_POSSIBILITIES: u16 = 0b00000001_11111111;
@@ -274,5 +329,41 @@ mod tests {
             Some(5)
         );
         assert_eq!(GameCell::Fixed(4).pop_count(), None);
+    }
+
+    #[test]
+    fn constrain() {
+        let mut cell = GameCell::SuperState(ALL_CELL_POSSIBILITIES);
+        cell.constrain(&GameCell::SuperState(ALL_CELL_POSSIBILITIES));
+        assert_eq!(cell, GameCell::SuperState(ALL_CELL_POSSIBILITIES));
+
+        let mut cell = GameCell::SuperState(ALL_CELL_POSSIBILITIES);
+        cell.constrain(&GameCell::Fixed(2));
+        assert_eq!(cell, GameCell::SuperState(0b00000001_11111101));
+
+        let mut cell = GameCell::SuperState(0b00000001_11111101);
+        cell.constrain(&GameCell::Fixed(4));
+        assert_eq!(cell, GameCell::SuperState(0b00000001_11110101));
+    }
+
+    #[test]
+    fn potential_values() {
+        assert_eq!(
+            GameCell::SuperState(ALL_CELL_POSSIBILITIES).potential_values(),
+            Some(vec![1, 2, 3, 4, 5, 6, 7, 8, 9])
+        );
+        assert_eq!(
+            GameCell::SuperState(0b00000001_11111101).potential_values(),
+            Some(vec![1, 3, 4, 5, 6, 7, 8, 9])
+        );
+        assert_eq!(
+            GameCell::SuperState(0b00000000_00000001).potential_values(),
+            Some(vec![1])
+        );
+        assert_eq!(
+            GameCell::SuperState(0b00000001_00000000).potential_values(),
+            Some(vec![9])
+        );
+        assert_eq!(GameCell::Fixed(4).potential_values(), None);
     }
 }
