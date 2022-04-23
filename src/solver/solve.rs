@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::parser::*;
+use super::state::*;
 
 pub fn solve(problem: &str) -> Result<GameState> {
     let state = GameState::parse(problem)?;
