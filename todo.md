@@ -1,6 +1,4 @@
 State
-- Get all cells in row/col/house.
-- Get popcount for cell
 - Constrain a given cell (return if set and scream if no values left)
 - Chose value at random
 

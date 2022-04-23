@@ -24,6 +24,15 @@ impl Display for GameCell {
     }
 }
 
+impl GameCell {
+    pub fn pop_count(&self) -> Option<u32> {
+        match self {
+            GameCell::SuperState(v) => Some(v.count_ones()),
+            GameCell::Fixed(_) => None,
+        }
+    }
+}
+
 pub const ALL_CELL_POSSIBILITIES: u16 = 0b00000001_11111111;
 
 pub struct GameState {
@@ -252,5 +261,18 @@ mod tests {
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
             )
         );
+    }
+
+    #[test]
+    fn pop_count() {
+        assert_eq!(
+            GameCell::SuperState(ALL_CELL_POSSIBILITIES).pop_count(),
+            Some(9)
+        );
+        assert_eq!(
+            GameCell::SuperState(0b00000001_10101010).pop_count(),
+            Some(5)
+        );
+        assert_eq!(GameCell::Fixed(4).pop_count(), None);
     }
 }
