@@ -1,7 +1,7 @@
 use std::fmt::{Display, Write};
 
 use anyhow::{anyhow, Result};
-use rand::{prelude::SliceRandom, seq::IteratorRandom, thread_rng};
+use rand::{prelude::SliceRandom, thread_rng};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum GameCell {
@@ -63,7 +63,7 @@ impl GameCell {
         }
     }
 
-    pub fn potential_values(&mut self) -> Option<Vec<u16>> {
+    pub fn potential_values(&self) -> Option<Vec<u16>> {
         match self {
             GameCell::SuperState(v) => {
                 let mut values = vec![];
@@ -79,18 +79,36 @@ impl GameCell {
         }
     }
 
-    pub fn random_potential(&mut self) -> Option<u16> {
+    pub fn random_potential(&self) -> Option<u16> {
         self.potential_values()
             .map(|v| *v.choose(&mut thread_rng()).unwrap())
     }
 
-    pub fn constrain(&mut self, cell: &GameCell) {
+    pub fn constrain(&mut self, cell: &GameCell) -> bool {
         if let GameCell::Fixed(constraint) = cell {
             match self {
-                GameCell::SuperState(v) => *v = *v & GameCell::unset_bit_pattern(*constraint),
-                GameCell::Fixed(_) => {}
+                GameCell::SuperState(v) => {
+                    let initial = *v;
+                    *v = *v & GameCell::unset_bit_pattern(*constraint);
+                    initial != *v
+                }
+                GameCell::Fixed(_) => false,
             }
+        } else {
+            false
         }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Point {
+    pub x: usize,
+    pub y: usize,
+}
+
+impl Point {
+    pub fn new(x: usize, y: usize) -> Point {
+        Point { x, y }
     }
 }
 
@@ -120,37 +138,38 @@ impl Display for GameState {
     }
 }
 
-pub struct Point {
-    x: usize,
-    y: usize,
-}
-
-impl Point {
-    pub fn new(x: usize, y: usize) -> Point {
-        Point { x, y }
-    }
-}
-
 impl GameState {
-    pub fn get(&self, pos: Point) -> GameCell {
+    pub fn get(&self, pos: &Point) -> GameCell {
         self.cells[pos.y][pos.x]
     }
 
-    pub fn cells_in_row(&self, row: usize) -> impl Iterator<Item = &GameCell> + '_ {
-        self.cells[row].iter()
+    pub fn get_mut(&mut self, pos: &Point) -> &mut GameCell {
+        &mut self.cells[pos.y][pos.x]
     }
 
-    pub fn cells_in_col(&self, col: usize) -> impl Iterator<Item = GameCell> + '_ {
-        self.cells.iter().map(move |r| r[col])
+    pub fn in_row(row: usize) -> Vec<Point> {
+        let mut points = vec![];
+        for i in 0..9 {
+            points.push(Point::new(i, row));
+        }
+        points
     }
 
-    pub fn cells_in_house(&self, pos: Point) -> Vec<GameCell> {
+    pub fn in_col(col: usize) -> Vec<Point> {
+        let mut points = vec![];
+        for i in 0..9 {
+            points.push(Point::new(col, i));
+        }
+        points
+    }
+
+    pub fn in_house(pos: &Point) -> Vec<Point> {
         fn point_to_house_coord(x: usize) -> usize {
             match x {
                 0..=2 => 0,
                 3..=5 => 1,
                 6..=8 => 2,
-                _ => panic!("Invalid position in cells_in_house"),
+                _ => panic!("Invalid position in in_house"),
             }
         }
 
@@ -160,13 +179,25 @@ impl GameState {
         let start_house_x = house_x * 3;
         let start_house_y = house_y * 3;
 
-        let mut cells = vec![];
-        for line in self.cells.iter().skip(start_house_y).take(3) {
-            for value in line.iter().skip(start_house_x).take(3) {
-                cells.push(value.clone());
+        let mut points = vec![];
+        for i in 0..3 {
+            for j in 0..3 {
+                points.push(Point::new(start_house_x + j, start_house_y + i));
             }
         }
-        cells
+        points
+    }
+
+    pub fn cells(&self) -> impl Iterator<Item = (Point, &GameCell)> + '_ {
+        self.cells
+            .iter()
+            .enumerate()
+            .map(move |(i, r)| {
+                r.iter()
+                    .enumerate()
+                    .map(move |(j, r)| (Point::new(i, j), r))
+            })
+            .flatten()
     }
 
     pub fn parse(problem: &str) -> Result<GameState> {
@@ -209,18 +240,18 @@ mod tests {
 ...527..9
 ....3..87";
 
-        let solution = GameState::parse(&problem).unwrap();
-        assert_eq!(solution.get(Point::new(0, 0)), GameCell::Fixed(9));
-        assert_eq!(solution.get(Point::new(0, 1)), GameCell::Fixed(4));
-        assert_eq!(solution.get(Point::new(1, 0)), GameCell::Fixed(1));
-        assert_eq!(solution.get(Point::new(1, 2)), GameCell::Fixed(7));
-        assert_eq!(solution.get(Point::new(0, 3)), GameCell::Fixed(3));
+        let state = GameState::parse(&problem).unwrap();
+        assert_eq!(state.get(&Point::new(0, 0)), GameCell::Fixed(9));
+        assert_eq!(state.get(&Point::new(0, 1)), GameCell::Fixed(4));
+        assert_eq!(state.get(&Point::new(1, 0)), GameCell::Fixed(1));
+        assert_eq!(state.get(&Point::new(1, 2)), GameCell::Fixed(7));
+        assert_eq!(state.get(&Point::new(0, 3)), GameCell::Fixed(3));
         assert_eq!(
-            solution.get(Point::new(1, 1)),
+            state.get(&Point::new(1, 1)),
             GameCell::SuperState(ALL_CELL_POSSIBILITIES)
         );
         assert_eq!(
-            solution.get(Point::new(8, 2)),
+            state.get(&Point::new(8, 2)),
             GameCell::SuperState(ALL_CELL_POSSIBILITIES)
         );
     }
@@ -237,8 +268,8 @@ mod tests {
 ...527..9
 ....3..87";
 
-        let solution = GameState::parse(&problem).unwrap();
-        assert_eq!(solution.to_string(), format!("{}\n", problem));
+        let state = GameState::parse(&problem).unwrap();
+        assert_eq!(state.to_string(), format!("{}\n", problem));
     }
 
     #[test]
@@ -253,9 +284,12 @@ mod tests {
 ...527..9
 ....3..87";
 
-        let solution = GameState::parse(&problem).unwrap();
+        let state = GameState::parse(&problem).unwrap();
         assert_eq!(
-            solution.cells_in_row(1).copied().collect::<Vec<GameCell>>(),
+            GameState::in_row(1)
+                .iter()
+                .map(|p| state.get(p))
+                .collect::<Vec<GameCell>>(),
             vec!(
                 GameCell::Fixed(4),
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
@@ -269,7 +303,10 @@ mod tests {
             )
         );
         assert_eq!(
-            solution.cells_in_col(2).collect::<Vec<GameCell>>(),
+            GameState::in_col(2)
+                .iter()
+                .map(|p| state.get(p))
+                .collect::<Vec<GameCell>>(),
             vec!(
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
@@ -283,7 +320,10 @@ mod tests {
             )
         );
         assert_eq!(
-            solution.cells_in_house(Point::new(0, 2)),
+            GameState::in_house(&Point::new(0, 2))
+                .iter()
+                .map(|p| state.get(p))
+                .collect::<Vec<GameCell>>(),
             vec!(
                 GameCell::Fixed(9),
                 GameCell::Fixed(1),
@@ -297,7 +337,10 @@ mod tests {
             )
         );
         assert_eq!(
-            solution.cells_in_house(Point::new(8, 4)),
+            GameState::in_house(&Point::new(8, 4))
+                .iter()
+                .map(|p| state.get(p))
+                .collect::<Vec<GameCell>>(),
             vec!(
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
@@ -311,7 +354,10 @@ mod tests {
             )
         );
         assert_eq!(
-            solution.cells_in_house(Point::new(0, 8)),
+            GameState::in_house(&Point::new(0, 8))
+                .iter()
+                .map(|p| state.get(p))
+                .collect::<Vec<GameCell>>(),
             vec!(
                 GameCell::SuperState(ALL_CELL_POSSIBILITIES),
                 GameCell::Fixed(4),
@@ -405,5 +451,42 @@ mod tests {
         }
 
         assert_eq!(None, GameCell::Fixed(2).random_potential());
+    }
+
+    #[test]
+    fn all_cells() {
+        let problem = "91..8....
+4..279...
+.73....4.
+3...4...1
+5..3.1..2
+8...6...4
+.4....63.
+...527..9
+....3..87";
+
+        let state = GameState::parse(&problem).unwrap();
+        let solution: Vec<(Point, GameCell)> = state
+            .cells()
+            .take(5)
+            .map(|(pos, cell)| (pos, *cell))
+            .collect();
+        assert_eq!(
+            solution,
+            vec![
+                (Point::new(0, 0), GameCell::Fixed(9)),
+                (Point::new(0, 1), GameCell::Fixed(1)),
+                (
+                    Point::new(0, 2),
+                    GameCell::SuperState(ALL_CELL_POSSIBILITIES)
+                ),
+                (
+                    Point::new(0, 3),
+                    GameCell::SuperState(ALL_CELL_POSSIBILITIES)
+                ),
+                (Point::new(0, 4), GameCell::Fixed(8)),
+            ]
+        );
+        assert_eq!(state.cells().count(), 81);
     }
 }

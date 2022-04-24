@@ -1,4 +1,4 @@
-mod solve;
-pub use solve::solve;
+mod solver;
+pub use solver::solve;
 
 mod state;
